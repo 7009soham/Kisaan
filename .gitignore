@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv
+kisaanev/
+
+# Data and outputs
+*.tmp
+*.log
+*.joblib
+*.pt
+*.bin
+*.json
+*.tsv
+*.parquet
+*.arrow
+*.png
+
+# Large model dirs (adjust if using Git LFS)
+models*/
+outputs*/
