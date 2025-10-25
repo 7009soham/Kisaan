@@ -21,12 +21,11 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MultiLabelBinarizer
-from sklearn.metrics import precision_recall_fscore_support
+from sklearn.metrics import precision_recall_fscore_support, f1_score, precision_score, recall_score
 from transformers import (AutoTokenizer, AutoModelForSequenceClassification,
                           DataCollatorWithPadding, Trainer, TrainingArguments)
 from transformers.trainer_callback import EarlyStoppingCallback
 from datasets import Dataset
-import evaluate
 import torch
 from peft import LoraConfig, get_peft_model, TaskType
 
@@ -161,16 +160,12 @@ def main():
     model = get_peft_model(base, lora_cfg)
 
     collator = DataCollatorWithPadding(tokenizer=tokenizer)
-    metric = evaluate.load("f1")
 
     def compute_metrics(eval_pred):
         logits, labels = eval_pred
         probs = 1 / (1 + np.exp(-logits))
         pred = (probs >= 0.5).astype(int)  # provisional; thresholds tuned later
         # Micro / Macro F1
-        micro = evaluate.combine(["precision", "recall", "f1"])
-        # Use sklearn for micro/macro over multilabel
-        from sklearn.metrics import f1_score, precision_score, recall_score
         return {
             "micro_f1":  f1_score(labels, pred, average="micro", zero_division=0),
             "macro_f1":  f1_score(labels, pred, average="macro", zero_division=0),
@@ -225,7 +220,6 @@ def main():
     test_probs  = 1 / (1 + np.exp(-test_logits))
     preds = (test_probs >= np.array(thresholds)).astype(int)
 
-    from sklearn.metrics import f1_score, precision_score, recall_score
     results = {
         "labels": list(mlb.classes_),
         "thresholds": thresholds,
