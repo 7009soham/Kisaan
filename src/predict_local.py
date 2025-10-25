@@ -29,9 +29,8 @@ def load_head(model_dir: Path):
     mdl.eval()
     return tok, mdl, labels, thresholds
 
-def predict_batch(tokenizer, model, texts, max_length=160, batch_size=32):
+def predict_batch(tokenizer, model, texts, max_length=160, batch_size=32, device="cpu"):
     probs_all = []
-    device = "cpu"
     model.to(device)
     for i in range(0, len(texts), batch_size):
         batch = texts[i:i+batch_size]
@@ -49,6 +48,8 @@ def main():
     ap.add_argument("--model_subtopic", required=True)
     ap.add_argument("--text_col", default="QueryText")
     ap.add_argument("--out_csv", required=True)
+    ap.add_argument("--device", default="auto", choices=["auto","cpu","cuda"], help="Device to use. 'auto' picks cuda if available")
+    ap.add_argument("--batch_size", type=int, default=32)
     args = ap.parse_args()
 
     df = pd.read_csv(args.data_csv, encoding="utf-8-sig")
@@ -56,13 +57,19 @@ def main():
         raise ValueError(f"Missing text column: {args.text_col}")
     texts = df[args.text_col].fillna("").astype(str).tolist()
 
+    # Resolve device
+    if args.device == "auto":
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    else:
+        device = args.device
+
     # Load models
     tok_t, mdl_t, labels_t, thr_t = load_head(Path(args.model_topic))
     tok_s, mdl_s, labels_s, thr_s = load_head(Path(args.model_subtopic))
 
     # Predict
-    probs_t = predict_batch(tok_t, mdl_t, texts)
-    probs_s = predict_batch(tok_s, mdl_s, texts)
+    probs_t = predict_batch(tok_t, mdl_t, texts, batch_size=args.batch_size, device=device)
+    probs_s = predict_batch(tok_s, mdl_s, texts, batch_size=args.batch_size, device=device)
 
     preds_t = (probs_t >= np.array(thr_t)).astype(int)
     preds_s = (probs_s >= np.array(thr_s)).astype(int)

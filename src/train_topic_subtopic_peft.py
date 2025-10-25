@@ -138,13 +138,25 @@ def main():
     base = AutoModelForSequenceClassification.from_pretrained(
         args.base_model,
         num_labels=len(mlb.classes_),
-        problem_type="multi_label_classification"
+        problem_type="multi_label_classification",
     )
-    base.gradient_checkpointing_enable()
+    # Enable gradient checkpointing for memory savings (works on both GPU and CPU; bigger win on GPU)
+    try:
+        base.gradient_checkpointing_enable()
+    except Exception:
+        pass
+
+    # Select LoRA target modules compatible with XLM-R/Roberta/BERT attention blocks.
+    # For Roberta-like models, attention linear layers are typically named: query, key, value, dense
+    # This avoids using q_proj/k_proj/v_proj/out_proj which are common in LLaMA-style architectures.
+    lora_targets = ["query", "key", "value", "dense"]
+
     lora_cfg = LoraConfig(
         task_type=TaskType.SEQ_CLS,
-        r=8, lora_alpha=16, lora_dropout=0.05,
-        target_modules=["q_proj","k_proj","v_proj","out_proj"]
+        r=8,
+        lora_alpha=16,
+        lora_dropout=0.05,
+        target_modules=lora_targets,
     )
     model = get_peft_model(base, lora_cfg)
 
@@ -168,6 +180,8 @@ def main():
             "macro_r":   recall_score(labels, pred, average="macro", zero_division=0),
         }
 
+    # Prefer bf16 on newer GPUs, else fp16 if CUDA available
+    use_bf16 = torch.cuda.is_available() and torch.cuda.get_device_capability(0)[0] >= 8
     args_train = TrainingArguments(
         output_dir=str(out_dir / "hf_runs"),
         learning_rate=args.lr,
@@ -182,7 +196,8 @@ def main():
         logging_steps=50,
         save_total_limit=2,
         gradient_accumulation_steps=1,
-        fp16=torch.cuda.is_available(),
+        fp16=(torch.cuda.is_available() and not use_bf16),
+        bf16=use_bf16,
         report_to="none",
         seed=args.seed
     )
