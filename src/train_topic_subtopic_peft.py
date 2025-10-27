@@ -112,11 +112,11 @@ def main():
     X_train, X_tmp, y_train, y_tmp = train_test_split(texts, y_multi, test_size=0.2, random_state=args.seed, stratify=primary)
     X_val, X_test, y_val, y_test = train_test_split(X_tmp, y_tmp, test_size=0.5, random_state=args.seed)
 
-    # Binarize
+    # Binarize (ensure float32 for BCEWithLogitsLoss)
     mlb = MultiLabelBinarizer(sparse_output=False)
-    y_train_bin = mlb.fit_transform(y_train)
-    y_val_bin   = mlb.transform(y_val)
-    y_test_bin  = mlb.transform(y_test)
+    y_train_bin = mlb.fit_transform(y_train).astype(np.float32)
+    y_val_bin   = mlb.transform(y_val).astype(np.float32)
+    y_test_bin  = mlb.transform(y_test).astype(np.float32)
 
     # Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.base_model)
@@ -124,10 +124,10 @@ def main():
     def tokenize_batch(batch):
         return tokenizer(batch["text"], truncation=True, max_length=args.max_length)
 
-    # Build HF Datasets
-    ds_train = Dataset.from_dict({"text": X_train, "labels": list(y_train_bin)})
-    ds_val   = Dataset.from_dict({"text": X_val,   "labels": list(y_val_bin)})
-    ds_test  = Dataset.from_dict({"text": X_test,  "labels": list(y_test_bin)})
+    # Build HF Datasets (labels as float32 lists to avoid Long dtype)
+    ds_train = Dataset.from_dict({"text": X_train, "labels": [row.tolist() for row in y_train_bin]})
+    ds_val   = Dataset.from_dict({"text": X_val,   "labels": [row.tolist() for row in y_val_bin]})
+    ds_test  = Dataset.from_dict({"text": X_test,  "labels": [row.tolist() for row in y_test_bin]})
 
     ds_train = ds_train.map(tokenize_batch, batched=True, remove_columns=["text"])
     ds_val   = ds_val.map(tokenize_batch,   batched=True, remove_columns=["text"])
